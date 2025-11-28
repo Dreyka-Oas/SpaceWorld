@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Simulation Spatiale</title>
+  <style>
+    html, body { height:100%; margin:0; background:#000; overflow:hidden; }
+    #app { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
+    canvas { display:block; width:100%; height:100%; touch-action: none; }
+
+    body {
+      font-family: "Segoe UI", "Roboto", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* UI GLOBALE */
+    .hud-panel {
+      position: absolute;
+      background: rgba(13, 17, 23, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+      padding: 12px 16px;
+      border-radius: 6px;
+      color: #b0c0d0;
+      font-size: 13px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      
+      /* Animation de transition pour l'opacité */
+      opacity: 1;
+      transition: opacity 1s ease-out, transform 1s ease-out;
+    }
+
+    /* Classe pour cacher le HUD proprement */
+    .hud-hidden {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-20px); /* Petit mouvement vers le haut */
+    }
+
+    .hud-label {
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: #5d6f85;
+      margin-bottom: 2px;
+    }
+
+    .hud-value {
+      font-family: "Courier New", monospace;
+      font-weight: 700;
+      font-size: 16px;
+      color: #e6f0ff;
+    }
+
+    #hud-top-left { top: 20px; left: 20px; min-width: 180px; }
+
+    /* STATS (FPS UNIQUEMENT) */
+    #hud-bottom-right {
+      bottom: 20px;
+      right: 20px;
+      text-align: right;
+      min-width: 60px;
+    }
+    .stat-val { color: #4aff4a; font-weight: bold; font-family: monospace; font-size: 14px; }
+
+    #hud-nav {
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%); /* Important pour le centrage */
+      text-align: center;
+      min-width: 320px;
+      /* On gère l'affichage via opacity maintenant, mais display:none au départ */
+      display: none; 
+      border-top: 2px solid #4aff4a;
+    }
+
+    #radarHud {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(10, 20, 30, 0.9) 0%, rgba(5, 10, 15, 0.95) 100%);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 0 25px rgba(0,0,0,0.7), inset 0 0 20px rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #radarCanvas { width: 100%; height: 100%; border-radius: 50%; display: block; }
+
+    .progress-container {
+      width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 8px; overflow: hidden; position: relative;
+    }
+    .progress-bar {
+      height: 100%; background: #4aff4a; width: 0%; box-shadow: 0 0 10px #4aff4a; transition: width 0.1s linear;
+    }
+
+    #stabBadge {
+      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #ffd580; font-size: 12px;
+      background: rgba(255, 170, 0, 0.15); border: 1px solid rgba(255, 170, 0, 0.4); padding: 6px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px; display: none;
+    }
+
+    #dangerAlert {
+      position: absolute; top: 100px; left: 50%; transform: translateX(-50%); color: #ff3333; font-weight: 900; font-size: 18px; letter-spacing: 2px;
+      background: rgba(50, 0, 0, 0.6); border: 1px solid #ff3333; padding: 10px 30px; border-radius: 4px; display: none; animation: flash 0.5s infinite alternate; box-shadow: 0 0 20px rgba(255, 0, 0, 0.4); text-align: center;
+    }
+    @keyframes flash { from { opacity: 0.5; } to { opacity: 1; } }
+
+    #mapBtn {
+      position: absolute; right: 20px; top: 20px; z-index: 40;
+      background: rgba(30, 40, 60, 0.9); color: #fff; border: 1px solid rgba(255,255,255,0.15); padding: 10px 20px; border-radius: 4px; font-family: inherit; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; transition: all 0.2s;
+    }
+    #mapBtn:hover { background: rgba(50, 70, 100, 1); border-color: #fff; }
+
+    .map-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); z-index: 100; }
+    .map-panel {
+      width: min(1000px, 94vw); height: min(700px, 86vh); background: #0b0e14; border: 1px solid #2d3542; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.9); display: flex; flex-direction: column; position: relative; overflow: hidden;
+    }
+    .map-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; background: #161b24; border-bottom: 1px solid #2d3542; gap: 12px; }
+    .map-search { flex: 1; max-width: 300px; background: #0b0e14; border: 1px solid #2d3542; padding: 8px 12px; border-radius: 4px; color: #fff; font-family: inherit; font-size: 13px; outline: none; transition: 0.2s; }
+    .map-search:focus { border-color: #4aff4a; box-shadow: 0 0 10px rgba(74, 255, 74, 0.1); }
+    .map-close { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; text-transform: uppercase; transition: 0.2s; }
+    .map-close:hover { background: rgba(255,255,255,0.1); border-color: #fff; }
+    .map-canvas-wrap { flex: 1; position: relative; background: #050505; }
+
+    .map-confirm-bar {
+      position: absolute; bottom: 0; left: 0; right: 0; background: rgba(20, 25, 35, 0.95); border-top: 1px solid #4aff4a; padding: 16px 24px; display: none; align-items: center; justify-content: space-between; animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    .confirm-info { display: flex; flex-direction: column; gap: 4px; }
+    .confirm-title { color: #fff; font-size: 16px; font-weight: 700; }
+    .confirm-meta { color: #4aff4a; font-size: 13px; font-family: "Courier New", monospace; }
+    .confirm-warning { color: #ff3333; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-top: 2px; }
+
+    .confirm-btn { background: #4aff4a; color: #000; border: 0; padding: 10px 24px; font-weight: 700; text-transform: uppercase; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .confirm-btn:hover { background: #6eff6e; box-shadow: 0 0 15px rgba(74, 255, 74, 0.4); }
+
+    #gameOverOverlay {
+      position: fixed; inset: 0; background: rgba(20, 0, 0, 0.7); display: none; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(10px);
+    }
+    .game-over-box { background: #110505; border: 2px solid #ff4444; padding: 40px; border-radius: 12px; text-align: center; box-shadow: 0 0 80px rgba(255, 0, 0, 0.6); }
+    .game-over-title { color: #ff4444; font-size: 32px; font-weight: 800; text-transform: uppercase; margin-bottom: 16px; }
+    .game-over-msg { color: #fff; margin-bottom: 24px; font-size: 14px; opacity: 0.8; }
+    .reload-btn { background: #ff4444; color: #fff; border: 0; padding: 12px 24px; font-weight: bold; cursor: pointer; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .reload-btn:hover { background: #ff2222; box-shadow: 0 0 20px #ff4444; }
+
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="hud-panel" id="hud-top-left">
+    <div>
+      <div class="hud-label">Vitesse</div>
+      <div class="hud-value" id="speedVal">0 km/h</div>
+    </div>
+    <div style="margin-top:8px;">
+      <div class="hud-label">Position</div>
+      <div class="hud-value" id="coordsVal">0, 0</div>
+    </div>
+  </div>
+
+  <div class="hud-panel" id="hud-bottom-right">
+    <div class="stat-val"><span id="fpsVal">60</span> FPS</div>
+  </div>
+
+  <div id="radarHud">
+    <canvas id="radarCanvas" width="220" height="220"></canvas>
+  </div>
+
+  <div class="hud-panel" id="hud-nav">
+    <div class="hud-label" id="navTargetLabel">DESTINATION</div>
+    <div class="hud-value" id="navTargetName">--</div>
+    <div style="display:flex; justify-content:space-between; margin-top:4px;">
+      <span style="font-size:12px; color:#4aff4a;" id="navDistVal">--</span>
+      <span style="font-size:12px; color:#fff;" id="navTimeVal">--</span>
+    </div>
+    <div class="progress-container">
+      <div class="progress-bar" id="navProgressBar"></div>
+    </div>
+  </div>
+
+  <div id="stabBadge">STABILISATION & ÉVITEMENT ACTIFS</div>
+  <div id="dangerAlert">⚠ DANGER DE COLLISION ⚠</div>
+
+  <button id="mapBtn">Carte Système</button>
+
+  <div class="map-overlay" id="mapOverlay">
+    <div class="map-panel" id="mapPanel">
+      <div class="map-header">
+        <div style="color:#e6f0ff; font-weight:600;">NAVIGATION</div>
+        <input type="text" class="map-search" id="mapSearch" placeholder="Rechercher..." autocomplete="off">
+        <button class="map-close" id="mapClose">Fermer</button>
+      </div>
+      
+      <div class="map-canvas-wrap">
+        <canvas id="mapCanvas" style="width:100%; height:100%; display:block; touch-action:none;"></canvas>
+        <div class="map-confirm-bar" id="mapConfirm">
+          <div class="confirm-info">
+            <span class="confirm-title" id="confName">Destination</span>
+            <span class="confirm-meta" id="confTime">Estimation : --</span>
+            <span class="confirm-warning" id="confWarn" style="display:none;"></span>
+          </div>
+          <button class="confirm-btn" id="confStartBtn">Lancer le voyage</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="gameOverOverlay">
+    <div class="game-over-box">
+      <div class="game-over-title">VAISSEAU DÉTRUIT</div>
+      <div class="game-over-msg" id="gameOverMsg">Impact détecté.</div>
+      <button class="reload-btn" onclick="location.reload()">Réinitialiser le système</button>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="./script/main.js"></script>
+</body>
+</html>
