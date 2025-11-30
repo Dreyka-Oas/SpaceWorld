@@ -1,0 +1,21 @@
+{
+  "name": "spaceworld-panel",
+  "version": "1.0.0",
+  "description": "Interface d'administration SpacePanel",
+  "main": "Panel/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node Panel/server.js",
+    "dev": "node --watch Panel/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.8.1",
+    "systeminformation": "^5.27.11"
+  }
+}

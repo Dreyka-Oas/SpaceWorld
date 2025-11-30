@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpacePanel • Login</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #0f172a; --text: #f8fafc; }
+        body {
+            margin: 0; height: 100vh;
+            background-color: var(--bg);
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                              radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                              radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            color: var(--text); font-family: 'Inter', system-ui, sans-serif;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .login-card {
+            background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 40px; border-radius: 16px; width: 100%; max-width: 360px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); text-align: center;
+        }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+        h1 { margin: 0 0 8px 0; font-size: 24px; font-weight: 600; }
+        p { margin: 0 0 32px 0; color: #94a3b8; font-size: 14px; }
+        
+        .input-group { margin-bottom: 16px; text-align: left; position: relative; }
+        label { display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 6px; font-weight: 500; }
+        input {
+            width: 100%; padding: 12px 16px; padding-right: 40px; /* Espace pour l'oeil */
+            background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; color: white; font-size: 15px; outline: none; transition: 0.2s; box-sizing: border-box;
+        }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+
+        /* BOUTON OEIL */
+        .eye-btn {
+            position: absolute; right: 10px; top: 35px;
+            cursor: pointer; color: #94a3b8;
+            display: flex; align-items: center; justify-content: center;
+            width: 24px; height: 24px;
+        }
+        .eye-btn:hover { color: white; }
+        .eye-btn svg { width: 20px; height: 20px; }
+
+        button {
+            width: 100%; padding: 12px; margin-top: 10px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        .error { color: #ef4444; font-size: 13px; margin-top: 16px; min-height: 20px; opacity: 0; }
+        .error.visible { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="icon">🚀</div>
+        <h1>Accès Serveur</h1>
+        <p>Connexion sécurisée administrateur</p>
+
+        <div class="input-group">
+            <label>Utilisateur</label>
+            <input type="text" id="user" placeholder="ex: root, admin..." autofocus>
+        </div>
+        <div class="input-group">
+            <label>Mot de passe</label>
+            <input type="password" id="pass" placeholder="••••••••">
+            <div class="eye-btn" onclick="togglePass()">
+                <svg id="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </div>
+        </div>
+
+        <button onclick="login()">Se connecter</button>
+        <div id="err" class="error">Identifiants incorrects.</div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const uInp = document.getElementById('user');
+        const pInp = document.getElementById('pass');
+        const err = document.getElementById('err');
+        const eyeIcon = document.getElementById('eye-icon');
+
+        let isVisible = false;
+        function togglePass() {
+            isVisible = !isVisible;
+            pInp.type = isVisible ? 'text' : 'password';
+            
+            if(isVisible) {
+                // Oeil barré
+                eyeIcon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                // Oeil normal
+                eyeIcon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+
+        function login() {
+            err.classList.remove('visible');
+            socket.emit('login', { username: uInp.value, password: pInp.value });
+        }
+
+        // Enter key
+        pInp.addEventListener('keydown', e => e.key === 'Enter' && login());
+        uInp.addEventListener('keydown', e => e.key === 'Enter' && pInp.focus());
+
+        socket.on('loginSuccess', d => {
+            localStorage.setItem('token', d.token);
+            location.href = '/panel.html';
+        });
+
+        socket.on('loginError', m => {
+            err.innerText = m;
+            err.classList.add('visible');
+        });
+    </script>
+</body>
+</html>

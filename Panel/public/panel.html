@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpacePanel • Dashboard</title>
+    <style>
+        /* --- CORE STYLES --- */
+        :root {
+            --bg: #0f172a; --sidebar-bg: #1e293b; --card-bg: rgba(30, 41, 59, 0.6);
+            --border: rgba(255, 255, 255, 0.08); --primary: #6366f1;
+            --text-main: #f8fafc; --text-sub: #94a3b8;
+            --c-cpu: #3b82f6; --c-ram: #a855f7; --c-disk: #10b981; --c-net: #f59e0b;
+            --sidebar-width: 250px; --sidebar-mini: 65px;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background-color: var(--bg); color: var(--text-main); font-family: 'Inter', system-ui, sans-serif; height: 100vh; width: 100vw; display: flex; overflow: hidden; }
+        
+        /* SIDEBAR */
+        .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; z-index: 100; flex-shrink: 0; }
+        .sidebar.collapsed { width: var(--sidebar-mini); }
+        .sidebar-head { height: 70px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border); overflow: hidden; white-space: nowrap; }
+        .logo { font-weight: 800; font-size: 18px; margin-left: 12px; background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .sidebar.collapsed .logo { opacity: 0; }
+        .toggle-btn { position: absolute; right: 15px; top: 25px; cursor: pointer; color: var(--text-sub); z-index: 101; }
+        .sidebar.collapsed .toggle-btn { right: 50%; transform: translateX(50%) rotate(180deg); }
+        .nav { flex: 1; padding: 20px 10px; display: flex; flex-direction: column; gap: 6px; }
+        .nav-item { display: flex; align-items: center; padding: 12px; border-radius: 8px; cursor: pointer; color: var(--text-sub); transition: 0.2s; overflow: hidden; white-space: nowrap; }
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+        .nav-item.active { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
+        .nav-icon { min-width: 24px; display: flex; justify-content: center; }
+        .nav-txt { margin-left: 12px; font-weight: 500; font-size: 14px; transition: opacity 0.2s; }
+        .sidebar.collapsed .nav-txt { opacity: 0; }
+
+        /* CONTENT */
+        .main { flex: 1; display: flex; flex-direction: column; background: radial-gradient(circle at top right, #172554 0%, transparent 45%), radial-gradient(circle at bottom left, #1e1b4b 0%, transparent 45%); position: relative; min-width: 0; }
+        .header { height: 70px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 30px; flex-shrink: 0; backdrop-filter: blur(10px); }
+        .page-title { font-size: 20px; font-weight: 700; }
+        .viewport { flex: 1; position: relative; overflow: hidden; }
+
+        /* VUES */
+        .view-section { display: none !important; position: absolute; top: 24px; left: 24px; right: 24px; bottom: 24px; min-height: 0; min-width: 0; }
+        .view-section.active { display: grid !important; animation: fadeUp 0.3s ease-out; }
+        @keyframes fadeUp { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: translateY(0); }}
+
+        /* LAYOUTS */
+        #view-cpu { grid-template-rows: 1.2fr 1fr; gap: 24px; }
+        #view-ram, #view-disk, #view-net { grid-template-columns: 1fr 1fr; gap: 24px; }
+        #view-net { grid-template-rows: 1fr; }
+        #view-users { grid-template-columns: 1fr 2fr; gap: 24px; }
+
+        /* CARDS & GRAPHS */
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; overflow: hidden; position: relative; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3); backdrop-filter: blur(12px); min-height: 0; min-width: 0; flex: 1; }
+        .card-head { display: flex; justify-content: space-between; margin-bottom: 16px; flex-shrink: 0; align-items: center; }
+        .card-t { font-size: 11px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; }
+        .card-v { font-size: 24px; font-weight: 700; color: white; font-variant-numeric: tabular-nums; }
+        .canvas-wrap { flex: 1; min-height: 0; width: 100%; position: relative; }
+        canvas { width: 100%; height: 100%; display: block; }
+        
+        .cores-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; overflow-y: auto; padding-right: 6px; height: 100%; }
+        .core-box { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; height: 90px; }
+        .core-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-sub); margin-bottom: 4px; }
+        .core-val { font-weight: bold; color: var(--c-cpu); }
+        .core-chart { flex: 1; width: 100%; min-height: 0; }
+        
+        .disk-col-left { display: grid; grid-template-rows: 1fr 1fr; gap: 24px; height: 100%; min-height: 0; }
+        .disk-center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; width: 100%; position: relative; }
+        .gauge-svg { width: 100%; height: 100%; max-width: 250px; max-height: 250px; transform: rotate(-90deg); overflow: visible; flex-shrink: 1; }
+        .gauge-bg { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 12; stroke-linecap: round; }
+        .gauge-val { fill: none; stroke: var(--c-disk); stroke-width: 12; stroke-dasharray: 0, 100; transition: stroke-dasharray 1s cubic-bezier(0.4, 0, 0.2, 1); stroke-linecap: round; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4)); }
+        .gauge-center-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -60%); text-align: center; pointer-events: none; }
+        .p-big { font-size: 40px; font-weight: 800; line-height: 1; }
+        .p-sub { font-size: 13px; color: var(--text-sub); margin-top: 4px; }
+        .disk-stats { width: 100%; margin-top: auto; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+        .ds-row { display: flex; justify-content: space-between; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px; }
+
+        /* --- USERS SPECIFIC --- */
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; color: var(--text-sub); margin-bottom: 5px; }
+        .form-input { width: 100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; color: white; outline: none; transition: 0.2s; }
+        .form-input:focus { border-color: var(--primary); }
+        .btn-add { width: 100%; background: var(--primary); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .btn-add:hover { opacity: 0.9; }
+        
+        .user-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%; padding-right: 5px; }
+        .user-item { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); transition: 0.2s; }
+        .user-item:hover { background: rgba(255,255,255,0.06); }
+        .u-info { display: flex; flex-direction: column; }
+        .u-name { font-weight: bold; font-size: 14px; color: white; }
+        .u-meta { font-size: 11px; color: var(--text-sub); }
+        
+        .u-right { display: flex; align-items: center; gap: 8px; }
+        .u-badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .u-badge.ROOT { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .u-badge.ADMIN { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .u-badge.USER { background: rgba(255, 255, 255, 0.1); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); }
+
+        .btn-icon { background: transparent; border: 1px solid rgba(255,255,255,0.1); color: var(--text-sub); border-radius: 4px; padding: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .btn-icon:hover { background: rgba(255,255,255,0.1); color: white; }
+        .btn-icon.del { border-color: rgba(239, 68, 68, 0.3); color: #ef4444; }
+        .btn-icon.del:hover { background: rgba(239, 68, 68, 0.2); }
+        .btn-icon svg { width: 14px; height: 14px; }
+
+        /* MODAL */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 200; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-box { background: #1e293b; border: 1px solid var(--border); padding: 24px; border-radius: 12px; width: 350px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        .m-head { display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold; font-size: 16px; }
+        .m-close { cursor: pointer; color: var(--text-sub); }
+        .m-foot { margin-top: 20px; display: flex; gap: 10px; }
+        .btn-sec { background: transparent; border: 1px solid var(--border); color: white; flex: 1; padding: 10px; border-radius: 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-head"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg><span class="logo">SpacePanel</span></div>
+        <div class="toggle-btn" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></div>
+        <div class="nav">
+            <div class="nav-item active" onclick="setTab('cpu')"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><path d="M9 9h6v6H9z"></path><path d="M9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3"/></svg></div><span class="nav-txt">Processeur</span></div>
+            <div class="nav-item" onclick="setTab('ram')"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"></path><path d="M2 12l5-5 5 5-5 5-5-5z"></path></svg></div><span class="nav-txt">Mémoire</span></div>
+            <div class="nav-item" onclick="setTab('disk')"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg></div><span class="nav-txt">Disque</span></div>
+            <div class="nav-item" onclick="setTab('net')"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"></path><path d="M17 6h6v6"></path></svg></div><span class="nav-txt">Réseau</span></div>
+            <div class="nav-item" id="nav-users" style="display:none;" onclick="setTab('users')"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></div><span class="nav-txt">Utilisateurs</span></div>
+        </div>
+        <div style="padding: 20px; margin-top: auto;">
+            <div class="nav-item" style="color:#ef4444;" onclick="logout()"><div class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></div><span class="nav-txt">Déconnexion</span></div>
+        </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+        <div class="header"><div class="page-title" id="page-title">Processeur</div><div style="font-size:12px; color:#aaa;" id="sys-info">Connexion...</div></div>
+        <div class="viewport">
+            <!-- CPU, RAM, DISK, NET (Same as before) -->
+            <div id="view-cpu" class="view-section active">
+                <div class="card"><div class="card-head"><span class="card-t">Charge Totale</span><span class="card-v" id="v-cpu">0%</span></div><div class="canvas-wrap"><canvas id="c-cpu"></canvas></div></div>
+                <div class="card"><div class="card-head"><span class="card-t">Détail Cœurs (<span id="core-cnt">0</span>)</span></div><div class="cores-container" id="cores-grid"></div></div>
+            </div>
+            <div id="view-ram" class="view-section">
+                <div class="card"><div class="card-head"><span class="card-t" style="color:var(--c-ram)">RAM Physique</span><span class="card-v" id="v-ram">0 GB</span></div><div class="canvas-wrap"><canvas id="c-ram"></canvas></div><div style="font-size:11px;text-align:right;margin-top:5px;">Total: <span id="t-ram">0</span> GB</div></div>
+                <div class="card"><div class="card-head"><span class="card-t" style="color:#f472b6">Swap</span><span class="card-v" id="v-swap">0 GB</span></div><div class="canvas-wrap"><canvas id="c-swap"></canvas></div><div style="font-size:11px;text-align:right;margin-top:5px;">Total: <span id="t-swap">0</span> GB</div></div>
+            </div>
+            <div id="view-disk" class="view-section">
+                <div class="disk-col-left">
+                    <div class="card"><div class="card-head"><span class="card-t" style="color:var(--c-disk)">Lecture</span><span class="card-v" id="v-dr">0 KB/s</span></div><div class="canvas-wrap"><canvas id="c-dr"></canvas></div></div>
+                    <div class="card"><div class="card-head"><span class="card-t" style="color:#2dd4bf">Écriture</span><span class="card-v" id="v-dw">0 KB/s</span></div><div class="canvas-wrap"><canvas id="c-dw"></canvas></div></div>
+                </div>
+                <div class="card disk-center">
+                    <div class="card-t" style="position:absolute;top:24px;left:24px;">Stockage Principal</div>
+                    <div style="flex:1;display:flex;align-items:center;justify-content:center;width:100%;min-height:0;"><svg class="gauge-svg" viewBox="0 0 36 36"><path class="gauge-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /><path class="gauge-val" id="g-circle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" /></svg></div>
+                    <div class="gauge-center-text"><div class="p-big" id="st-p">0%</div><div class="p-sub">Utilisé</div></div>
+                    <div class="disk-stats"><div class="ds-row"><span style="color:#aaa;">Utilisé</span><span style="font-weight:600;" id="st-u">0 GB</span></div><div class="ds-row"><span style="color:#aaa;">Total</span><span style="font-weight:600;" id="st-t">0 GB</span></div></div>
+                </div>
+            </div>
+            <div id="view-net" class="view-section">
+                <div class="card"><div class="card-head"><span class="card-t" style="color:var(--c-net)">Download</span><span class="card-v" id="v-nr">0 bps</span></div><div class="canvas-wrap"><canvas id="c-nr"></canvas></div></div>
+                <div class="card"><div class="card-head"><span class="card-t" style="color:#f59e0b">Upload</span><span class="card-v" id="v-nt">0 bps</span></div><div class="canvas-wrap"><canvas id="c-nt"></canvas></div></div>
+            </div>
+
+            <!-- USERS TAB -->
+            <div id="view-users" class="view-section">
+                <div class="card">
+                    <div class="card-head"><span class="card-t">Créer Utilisateur</span></div>
+                    <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                        <div class="form-group"><label>Nom</label><input type="text" id="new-u" class="form-input" placeholder="Nom..."></div>
+                        <div class="form-group"><label>Mot de passe</label><input type="password" id="new-p" class="form-input" placeholder="••••••"></div>
+                        <div class="form-group" style="display:flex; align-items:center; gap:10px;"><input type="checkbox" id="new-admin"> <label for="new-admin" style="margin:0; cursor:pointer;">Administrateur (Sudo)</label></div>
+                        <button class="btn-add" onclick="addUser()">Créer Utilisateur</button>
+                        <div id="u-msg" style="margin-top:15px; font-size:12px; height:20px;"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-head"><span class="card-t">Utilisateurs Système</span></div>
+                    <div class="user-list" id="users-list-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDIT -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal-box">
+            <div class="m-head"><span>Modifier Utilisateur</span><span class="m-close" onclick="closeModal()">✕</span></div>
+            <div style="margin-bottom:20px; color:var(--primary); font-weight:bold;" id="edit-target-name"></div>
+            
+            <div class="form-group"><label>Nouveau Mot de passe (laisser vide pour ne pas changer)</label><input type="password" id="edit-pass" class="form-input" placeholder="••••••"></div>
+            <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" id="edit-admin"> <label for="edit-admin" style="margin:0; cursor:pointer;">Accès Administrateur (Sudo)</label>
+            </div>
+            
+            <div class="m-foot">
+                <button class="btn-sec" onclick="closeModal()">Annuler</button>
+                <button class="btn-add" onclick="submitEdit()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const token = localStorage.getItem('token');
+        if(!token) location.href = '/';
+
+        // Parse JWT to know who I am
+        function parseJwt (token) {
+            try { return JSON.parse(atob(token.split('.')[1])); } catch (e) { return null; }
+        }
+        const myInfo = parseJwt(token);
+        if(!myInfo) location.href = '/';
+
+        // Init visibility based on role
+        if(myInfo.role === 'admin') {
+            document.getElementById('nav-users').style.display = 'flex';
+        }
+
+        const SIZE = 60;
+        const H = { cpu:[], ram:[], swap:[], dr:[], dw:[], nr:[], nt:[], cores:[] };
+        Object.keys(H).forEach(k => { if(k!=='cores') H[k] = new Array(SIZE).fill(0); });
+        const C = { cpu:[59,130,246], ram:[168,85,247], swap:[244,114,182], dr:[16,185,129], dw:[45,212,191], nr:[245,158,11], nt:[251,146,60] };
+
+        let currentTab = 'cpu';
+        let coresInit = false;
+        let editingUser = '';
+
+        function setTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+            const idx = ['cpu','ram','disk','net','users'].indexOf(tab);
+            if(idx>-1) document.querySelectorAll('.nav-item')[idx].classList.add('active');
+            document.querySelectorAll('.view-section').forEach(e => e.classList.remove('active'));
+            document.getElementById('view-'+tab).classList.add('active');
+            document.getElementById('page-title').innerText = {cpu:'Processeur',ram:'Mémoire',disk:'Disque',net:'Réseau',users:'Utilisateurs'}[tab];
+            if(tab !== 'users') requestAnimationFrame(resizeAll);
+        }
+
+        function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); setTimeout(resizeAll, 320); }
+        function logout() { localStorage.removeItem('token'); location.href='/'; }
+
+        // --- FORMATTERS ---
+        function formatDiskSpeed(mbVal) { if (mbVal < 0.1) { const kb = mbVal * 1024; return (kb < 0.1 ? "0 KB/s" : Math.round(kb) + ' KB/s'); } return mbVal.toFixed(1) + ' MB/s'; }
+        function formatNetSpeed(bytesSec) { const bitsSec = bytesSec * 8; if (bitsSec < 1000) return Math.round(bitsSec) + ' bps'; if (bitsSec < 1000000) return (bitsSec / 1000).toFixed(1) + ' Kbps'; if (bitsSec < 1000000000) return (bitsSec / 1000000).toFixed(1) + ' Mbps'; return (bitsSec / 1000000000).toFixed(1) + ' Gbps'; }
+
+        socket.on('connect', () => socket.emit('joinMonitor', token));
+        socket.on('forceLogout', () => logout());
+        socket.on('staticData', d => { document.getElementById('sys-info').innerText = `${d.osName} • ${d.cpuName}`; document.getElementById('t-ram').innerText = d.totalRam; document.getElementById('t-swap').innerText = d.totalSwap; });
+
+        // --- USERS LOGIC ---
+        socket.on('usersList', users => {
+            const c = document.getElementById('users-list-container');
+            c.innerHTML = '';
+            users.forEach(u => {
+                const isMe = u.user === myInfo.user;
+                const isRoot = u.user === 'root';
+                // On cache les boutons delete/edit pour Root et Soi-meme (pour delete)
+                // Root ne peut pas etre édité ni supprimé
+                // Je ne peux pas me supprimer moi meme
+                
+                let btns = '';
+                if(!isRoot) {
+                    btns += `<button class="btn-icon" title="Modifier" onclick="openEdit('${u.user}', ${u.role==='ADMIN'})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>`;
+                    
+                    if(!isMe) {
+                        btns += `<button class="btn-icon del" title="Supprimer" onclick="deleteUser('${u.user}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
+                    }
+                }
+
+                c.innerHTML += `
+                    <div class="user-item">
+                        <div class="u-info">
+                            <span class="u-name">${u.user} ${isMe ? '(Vous)' : ''}</span>
+                            <span class="u-meta">UID: ${u.uid}</span>
+                        </div>
+                        <div class="u-right">
+                            <span class="u-badge ${u.role}">${u.role}</span>
+                            ${btns}
+                        </div>
+                    </div>`;
+            });
+        });
+
+        socket.on('userActionSuccess', msg => { 
+            const m = document.getElementById('u-msg'); m.style.color = '#10b981'; m.innerText = msg; 
+            document.getElementById('new-u').value=''; document.getElementById('new-p').value=''; 
+            closeModal();
+        });
+        socket.on('userActionError', msg => { 
+            const m = document.getElementById('u-msg'); m.style.color = '#ef4444'; m.innerText = msg; 
+            alert(msg);
+        });
+
+        function addUser() {
+            const u = document.getElementById('new-u').value; const p = document.getElementById('new-p').value; const a = document.getElementById('new-admin').checked;
+            if(!u || !p) return;
+            socket.emit('createUser', { token, newUser: u, newPass: p, isAdmin: a });
+        }
+
+        function deleteUser(user) {
+            if(confirm('Supprimer définitivement '+user+' et ses fichiers ?')) {
+                socket.emit('deleteUser', { token, targetUser: user });
+            }
+        }
+
+        // --- EDIT MODAL ---
+        function openEdit(user, isAdmin) {
+            editingUser = user;
+            document.getElementById('edit-target-name').innerText = user;
+            document.getElementById('edit-pass').value = '';
+            document.getElementById('edit-admin').checked = isAdmin;
+            document.getElementById('edit-modal').classList.add('active');
+        }
+        function closeModal() {
+            document.getElementById('edit-modal').classList.remove('active');
+            editingUser = '';
+        }
+        function submitEdit() {
+            if(!editingUser) return;
+            const p = document.getElementById('edit-pass').value;
+            const a = document.getElementById('edit-admin').checked;
+            socket.emit('modifyUser', { token, targetUser: editingUser, newPass: p, makeAdmin: a });
+        }
+
+        // --- REALTIME ---
+        socket.on('realtimeData', d => {
+            const push = (k,v) => { H[k].push(v); H[k].shift(); };
+            push('cpu', d.cpu.load); push('ram', d.ram.percent); push('swap', d.swap.percent);
+            push('dr', d.disk.read); push('dw', d.disk.write); push('nr', d.net.rxBytes * 8); push('nt', d.net.txBytes * 8);
+            d.cpu.cores.forEach((l, i) => { if(!H.cores[i]) H.cores[i] = new Array(SIZE).fill(0); H.cores[i].push(l); H.cores[i].shift(); });
+
+            if(currentTab==='cpu') { document.getElementById('v-cpu').innerText = Math.round(d.cpu.load)+'%'; updateCores(d.cpu.cores); }
+            if(currentTab==='ram') { document.getElementById('v-ram').innerText = (d.ram.used/1024/1024/1024).toFixed(1)+' GB'; document.getElementById('v-swap').innerText = (d.swap.used/1024/1024/1024).toFixed(1)+' GB'; }
+            if(currentTab==='disk') { document.getElementById('v-dr').innerText = formatDiskSpeed(d.disk.read); document.getElementById('v-dw').innerText = formatDiskSpeed(d.disk.write); updateStorage(d.disk.storage); }
+            if(currentTab==='net') { document.getElementById('v-nr').innerText = formatNetSpeed(d.net.rxBytes); document.getElementById('v-nt').innerText = formatNetSpeed(d.net.txBytes); }
+        });
+
+        function updateCores(cores) {
+            const c = document.getElementById('cores-grid');
+            if(!coresInit) { document.getElementById('core-cnt').innerText = cores.length; c.innerHTML = ''; cores.forEach((_, i) => c.innerHTML += `<div class="core-box"><div class="core-header"><span>Core ${i}</span><span class="core-val" id="cv-${i}">0%</span></div><div class="core-chart"><canvas id="cc-${i}"></canvas></div></div>`); coresInit = true; setTimeout(resizeAll, 10); }
+            cores.forEach((v, i) => { const el = document.getElementById(`cv-${i}`); if(el) el.innerText = Math.round(v) + '%'; });
+        }
+
+        function updateStorage(s) {
+            if(!s) return; const c = document.getElementById('g-circle'); let p = Math.round(s.percent); if(s.percent>0 && s.percent<1) p=s.percent.toFixed(1);
+            c.setAttribute('stroke-dasharray', `${s.percent}, 100`);
+            if(s.percent>90) c.style.stroke='#ef4444'; else if(s.percent>75) c.style.stroke='#f59e0b'; else c.style.stroke='#10b981';
+            document.getElementById('st-p').innerText = p+'%'; document.getElementById('st-u').innerText = (s.used/1024/1024/1024).toFixed(1)+' GB'; document.getElementById('st-t').innerText = (s.total/1024/1024/1024).toFixed(1)+' GB';
+        }
+
+        function resizeAll() {
+            const dpr = window.devicePixelRatio || 1;
+            document.querySelectorAll('canvas').forEach(c => { if(c.offsetParent) { const r = c.parentElement.getBoundingClientRect(); if(r.width>0 && r.height>0) { c.width=r.width*dpr; c.height=r.height*dpr; c.getContext('2d').scale(dpr,dpr); } } });
+        }
+        window.addEventListener('resize', resizeAll);
+        const ro = new ResizeObserver(() => { requestAnimationFrame(resizeAll); }); ro.observe(document.querySelector('.viewport'));
+
+        function drawGraph(id, data, rgb, filled=true, autoScale=false) {
+            const cvs = document.getElementById(id); if(!cvs || !cvs.offsetParent) return;
+            const ctx = cvs.getContext('2d'); const w = cvs.width/(window.devicePixelRatio||1); const h = cvs.height/(window.devicePixelRatio||1);
+            ctx.clearRect(0,0,w,h);
+            let max = 100; if(autoScale) { const pk=Math.max(...data); max=pk>1 ? pk*1.3 : 10; }
+            const step = w / (data.length - 1);
+            if(filled) { ctx.beginPath(); for(let i=0; i<data.length; i++) { const x=i*step; const y=h-(data[i]/max)*h; if(i===0) ctx.moveTo(x,y); else { const px=(i-1)*step; const py=h-(data[i-1]/max)*h; ctx.quadraticCurveTo(px,py,(px+x)/2,(py+y)/2); } if(i===data.length-1) ctx.lineTo(x,y); } ctx.lineTo(w,h); ctx.lineTo(0,h); ctx.closePath(); const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.2)`); g.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.0)`); ctx.fillStyle=g; ctx.fill(); }
+            ctx.beginPath(); for(let i=0; i<data.length; i++) { const x=i*step; const y=h-(data[i]/max)*h; if(i===0) ctx.moveTo(x,y); else { const px=(i-1)*step; const py=h-(data[i-1]/max)*h; ctx.quadraticCurveTo(px,py,(px+x)/2,(py+y)/2); } if(i===data.length-1) ctx.lineTo(x,y); }
+            ctx.strokeStyle=`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; ctx.lineWidth=3; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.shadowBlur=10; ctx.shadowColor=`rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.8)`; ctx.stroke(); ctx.shadowBlur=0;
+        }
+
+        function loop() {
+            if(currentTab === 'cpu') { drawGraph('c-cpu',H.cpu,C.cpu); if(coresInit) H.cores.forEach((d,i)=>drawGraph(`cc-${i}`,d,C.cpu,true)); }
+            if(currentTab === 'ram') { drawGraph('c-ram',H.ram,C.ram); drawGraph('c-swap',H.swap,C.swap); }
+            if(currentTab === 'disk') { drawGraph('c-dr',H.dr,C.dr,true,true); drawGraph('c-dw',H.dw,C.dw,true,true); }
+            if(currentTab === 'net') { drawGraph('c-nr',H.nr,C.nr,true,true); drawGraph('c-nt',H.nt,C.nt,true,true); }
+            requestAnimationFrame(loop);
+        }
+        resizeAll(); loop();
+    </script>
+</body>
+</html>
